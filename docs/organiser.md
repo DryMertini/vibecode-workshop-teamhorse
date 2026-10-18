@@ -7,6 +7,7 @@ Before directing students here, use a fresh fork and a real non-admin participan
 - Verify an uploaded key reaches only its authorised team; do not share organiser credentials.
 - Check the container's student user, Node 22+, npm, Git, systemd and passwordless sudo assumptions against the actual provisioning.
 - Clone a fresh public fork through the interactive team shell and run the documented first deployment. Check dependency install/build network access.
+- Confirm the initial hello unit is named `team-hello.service`, as expected by the deploy helper.
 - Prove hello-page replacement, local health, public HTTPS, reported revision, phone browser and a later deployment.
 - Prove the app survives SSH disconnection and document the actual host/container reboot behaviour. The app unit can be enabled, but this starter cannot establish container/platform reboot recovery.
 - Verify an intentionally failed app startup restores the previous app or hello service without deleting work. Platform failure recovery belongs to the organiser.

@@ -19,6 +19,8 @@ npm run deploy
 
 If Git is dirty, preserve and commit the appropriate work on its branch before switching. Do not use a reset to make deployment proceed.
 
+Let deployment finish; do not interrupt it with Ctrl-C or disconnect its SSH session. Signal interruption can bypass automatic recovery. If interrupted, ask the organiser to inspect the service and restore the previous release or hello page before retrying.
+
 The helper checks main and a clean checkout, runs tests, archives that commit into a new release directory, installs dependencies and runs an optional build. It then installs a team-local `workshop-app.service`, stops the platform hello service if active, and starts the app. It checks the local health endpoint and intended revision. If startup fails, it attempts to restore the previous unit/hello service and reports any recovery failure. Releases are retained; the helper never prunes them or deletes application data.
 
 ```sh

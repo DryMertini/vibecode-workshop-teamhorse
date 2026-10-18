@@ -40,6 +40,7 @@ Replace `YOUR-OWNER/YOUR-FORK` with the team's actual fork path. Forking can set
 ```sh
 gh repo clone YOUR-OWNER/YOUR-FORK
 cd YOUR-FORK
+gh repo set-default YOUR-OWNER/YOUR-FORK
 ```
 
 Alternatively use GitHub's Fork button and clone the HTTPS URL from your fork's Code button. Follow [GitHub authentication](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/about-authentication-to-github); an account password is not a Git HTTPS credential. Public clones need no login; pushing needs your own authorised credential.
