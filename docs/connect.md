@@ -1,5 +1,7 @@
 # Connect your team
 
+Commands below use a macOS/Linux/WSL shell. Install [Git](https://git-scm.com/downloads), [Node.js 22 or newer](https://nodejs.org/en/download) and optionally [GitHub CLI](https://cli.github.com/manual/installation) on your laptop. The assigned team container supplies its own runtime.
+
 ## 1. Register and obtain your assigned environment
 
 Open [intra.land/vibecode](https://intra.land/vibecode), register with your linked 42 account, and join or create your team. Use the page's current deadlines; do not rely on a copied schedule in this repo.
@@ -19,7 +21,7 @@ Your personal notes may go in `.workshop.local.md`, which is ignored by Git. Nev
 
 ## 2. Fork and share GitHub access
 
-One teammate forks [ikodo0/vibecode-workshop](https://github.com/ikodo0/vibecode-workshop/fork). That teammate invites the others as collaborators on **their fork**. Accept the invitations before building.
+One teammate forks [ikodo0/vibecode-workshop](https://github.com/ikodo0/vibecode-workshop/fork). That teammate invites the others as collaborators on **their fork**. Accept the invitations before building. Open your fork's Actions tab and enable workflows if GitHub asks. Confirm a `Check` run appears after your first push; an absent run is not a passing check.
 
 With the [GitHub CLI](https://cli.github.com/manual/installation), the fork owner can run on their laptop:
 
