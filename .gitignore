@@ -1,0 +1,10 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.workshop.local.md
+*.log
+coverage/
+.DS_Store
+.ai/private/
+.ai/browser/
