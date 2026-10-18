@@ -2,7 +2,7 @@
 
 Base SHA: none (root commit)
 Head SHA: 5983b752622f3a50ef4a52e9f3782afd77802015
-Reviewed history: 1b9acd0b888affcdeee22184062faf9aff2862df (full review), then 581526c and 5983b75, both docs-only and both landed during the review (delta reviews below). The writer was not idle during this review (AGENTS.md rule 4). Any further commit needs its own re-review.
+Reviewed history: 1b9acd0b888affcdeee22184062faf9aff2862df (full review), then 581526c and 5983b75, both docs-only and both landed during the review (delta reviews below). The writer was not idle during this review (AGENTS.md rule 4). Any further commit needs its own re-review. 55d2a8f ("docs: record independent starter review") adds only this report (`git diff --stat 5983b75 55d2a8f` lists only this file). It changes no reviewed content, and the working-tree version of this file is the final one.
 Reviewer session/provider: Claude Code (Claude model family), a one-off review session launched through Orca. This session did not write the change and did not edit any file except this one.
 Date: 2026-10-18
 
@@ -21,6 +21,8 @@ Scope: all 39 files in the root commit, especially AGENTS.md, README.md, docs/, 
 | Unit interpolation | `serviceUnit` regexes reject newline, `%` specifier, `$()` and relative paths. Revision must be 40–64 hex characters. Covered by test/deploy.test.mjs. | Pass |
 | Leaks | `git grep` on HEAD for IPv4, hostnames, token, key and password patterns, and AI attribution. Only public URLs (github.com, intra.land, docs and vendor sites) and loopback/0.0.0.0 appear. The author and committer are a GitHub noreply address. The commit has no trailers. `.ai/private/` and `.ai/browser/` are ignored and untracked. | Pass |
 | Instruction coherence | Read README → connect → deploy → agents → workflow → roles/templates against AGENTS.md. Fork-per-team, PRs inside the fork, laptop agents with a public-fork clone in the container, and the role chain project lead → milestone lead → coder → reviewer → committer are consistent. Release requires an explicit team instruction everywhere. Linked install and quickstart URLs for Codex, Claude Code and gh return 200. | Pass, with F2 |
+
+The simulation harness, CDP script, screenshots, Node 22 checksum manifest and verbatim outputs are kept in the ignored `.ai/private/review-evidence/`. They are not published.
 
 Not checked (organiser live-rehearsal limits, not blockers in this commit):
 
