@@ -58,13 +58,14 @@ git --version
 pwd
 ```
 
-The supplied deployment helper expects `student` on Linux with systemd. If the organiser's environment differs, ask for the correct deployment route. Do not change the host's SSH, DNS or container settings.
+`whoami` is `vc-team`. The account has no sudo. The guest already has a placeholder app in `~/workshop` and serves it with the user service `vc-app.service`. Leave that directory as it is. If the account or contract is different, ask the organiser. Do not change the host's SSH, DNS or container settings.
 
-Clone the team's **public** fork inside the container, replacing the URL:
+Clone the team's **public** fork inside the container, replacing the URL. Clone into `~/src/team`, not `~/workshop`:
 
 ```sh
-git clone https://github.com/YOUR-OWNER/YOUR-FORK.git workshop
-cd workshop
+mkdir -p "$HOME/src"
+git clone https://github.com/YOUR-OWNER/YOUR-FORK.git "$HOME/src/team"
+cd "$HOME/src/team"
 npm ci
 npm test
 ```
@@ -83,8 +84,8 @@ Continue with [deployment](deploy.md).
 | `Could not resolve hostname` | Copy the exact supplied hostname; ask organiser to verify DNS. |
 | GitHub clone works but push fails | Check collaborator invitation and your own GitHub authentication. |
 | PR targets the workshop starter | Run `gh repo set-default YOUR-OWNER/YOUR-FORK`; explicitly use `--repo` on PR commands. |
-| `EADDRINUSE` on port 3000 | The platform hello service or another app already owns the port; see deployment. |
-| Public URL shows the hello page | Your application has not replaced the hello service, or routing is not ready. |
+| `EADDRINUSE` on port 3000 | `vc-app` is already serving the placeholder or a release. Inspect it before starting another process; see deployment. |
+| Public URL shows the placeholder page | The release drop-in is not active, or the public route is not ready. On the guest, `vc-app status` shows the user service. |
 | No assigned SSH command or URL | Hosting is not ready for your team; ask the organiser. A URL in a form is not a health check. |
 
 Sources: [fork CLI](https://cli.github.com/manual/gh_repo_fork), [forking guide](https://docs.github.com/en/pull-requests/how-tos/fork-a-repo), [SSH keys](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent).

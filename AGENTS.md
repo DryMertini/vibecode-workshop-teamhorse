@@ -34,8 +34,8 @@ IDEA.md owns the problem. PLAN.md owns planned outcomes, step status and depende
 - `npm test` — HTTP behaviour and deployment-contract tests.
 - `npm start` — app on `0.0.0.0:3000` by default.
 - `npm run doctor` — environment diagnosis.
-- `npm run deploy:preview` — inspect the proposed service without changing it.
-- `npm run deploy` — explicit release on the workshop container; see docs/deploy.md.
+- `npm run deploy:preview` — print the proposed `vc-app` user drop-in without changing services.
+- `npm run deploy` — release on the assigned workshop guest as `vc-team`, without sudo; see docs/deploy.md.
 - `npm run smoke -- https://ASSIGNED-URL` — check the served revision.
 
 Do not claim hosted acceptance from a local green test. After UI changes, inspect the browser at desktop and phone widths, exercise the user journey and record evidence. Test scope must match the risk; do not manufacture tests merely to obtain a green badge.

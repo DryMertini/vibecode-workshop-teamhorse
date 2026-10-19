@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { guestRefusal, readGuestProbe } from './deploy.mjs';
 let failed = false;
 function report(ok, message) { console.log(`${ok ? 'OK' : 'CHECK'}  ${message}`); if (!ok) failed = true; }
 report(Number(process.versions.node.split('.')[0]) >= 22, `Node ${process.versions.node}; needs 22+`);
@@ -14,6 +15,9 @@ for (const name of ['AGENTS.md', 'IDEA.md', 'PLAN.md']) {
   try { report(Boolean(readFileSync(name, 'utf8').trim()), `${name} exists`); }
   catch { report(false, `${name} missing`); }
 }
+const guest = guestRefusal(readGuestProbe());
+if (guest) console.log(`INFO  ${guest}`);
+else report(true, 'Assigned workshop guest: user vc-team, contract user-app-v1, lingering vc-app.service.');
 console.log('INFO  Doctor does not authenticate GitHub, verify team membership, SSH, DNS or hosted health.');
 console.log('INFO  Agent sign-in is separate; follow docs/agents.md.');
 process.exitCode = failed ? 1 : 0;

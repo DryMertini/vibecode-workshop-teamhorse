@@ -14,7 +14,7 @@ Turn an idea into a useful, working demo with AI agents. Start with a live page,
    npm start
    ```
 
-   Open `http://localhost:3000` on the machine running the app. For your workshop's public URL, follow [deployment](docs/deploy.md); the platform's hello service may already occupy port 3000.
+   Open `http://localhost:3000` on the machine running the app. On the workshop guest, clone into `~/src/team`, not `~/workshop`; the placeholder may already listen on port 3000. For the public URL, follow [deployment](docs/deploy.md).
 4. **Start your lead.** Open your chosen coding agent in the repository and paste:
 
    > Read AGENTS.md, IDEA.md, PLAN.md and .ai/roles/project-lead.md. You are the project lead. Inspect the starting code. Help us turn the assigned idea into one small useful journey. Challenge assumptions, draft the plan and ask us about decisions that change the goal. Do not implement until we agree the first milestone.
@@ -45,8 +45,8 @@ This is a starter, not an automatic agent launcher. Each role needs a real sessi
 npm run doctor                 # local tools, Git remotes and repository checks
 npm start                      # page on port 3000
 npm test                       # real HTTP and deployment-contract tests
-npm run deploy:preview         # print proposed service, without changing services
-npm run deploy                 # on the assigned team container only
+npm run deploy:preview         # print the vc-app user drop-in, without changing services
+npm run deploy                 # assigned workshop guest only, as vc-team, without sudo
 npm run smoke -- https://YOUR-ASSIGNED-URL
 ```
 
