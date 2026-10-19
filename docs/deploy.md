@@ -23,7 +23,7 @@ If Git is dirty, preserve and commit the appropriate work on its branch before s
 
 Let deployment finish; do not interrupt it with Ctrl-C or disconnect its SSH session. Signal interruption can bypass automatic recovery. If interrupted, ask the organiser to inspect `vc-app` and restore the previous release or the placeholder before retrying.
 
-The helper checks that this machine is the assigned guest (`vc-team`, contract `user-app-v1`, the placeholder user unit, and user lingering). It checks main and a clean checkout, runs tests, archives that commit into a new release directory, installs dependencies and runs an optional build. It then installs a user drop-in for `vc-app.service` pointing at that release and restarts the user service. It does not rewrite `~/workshop`, earlier releases or application data. It checks the local health endpoint and intended revision. If startup fails, it restores the previous drop-in, or removes the drop-in so the placeholder serves again, and reports any recovery failure. Releases are retained; the helper never prunes them.
+The helper checks that this machine is the assigned guest (`vc-team`, contract `user-app-v1`, the placeholder user unit, and user lingering). It checks main and a clean checkout, then takes an exclusive deploy lock so only one deploy runs on the guest. A second run exits immediately and says another deploy is running. The lock is released when the process exits, including after a failure or a kill, so a dead run does not block the next one. It runs tests, archives that commit into a new release directory, installs dependencies and runs an optional build. Install and build run inside a user scope with `MemoryMax=2G` and `MemorySwapMax=0` (`BUILD_MEMORY_MAX` in `scripts/deploy.mjs`). That leaves about 1GiB on a 3GiB guest for the serving app, sshd and the user manager. If that limit cannot be applied, or the build exceeds it, the command fails and does not switch the service. It then installs a user drop-in for `vc-app.service` pointing at that release and restarts the user service. It does not rewrite `~/workshop` or application data. It checks the local health endpoint and intended revision. If startup fails, it restores the previous drop-in, or removes the drop-in so the placeholder serves again, and reports any recovery failure. After that recovery succeeds, it removes only the failed new release directory. After the new release passes its health check, it keeps that release and the previous one (the release rollback would restore) and removes older directories under the releases folder only. It never removes `~/workshop`, application data, or a path outside the releases directory.
 
 The user manager keeps running after you disconnect because lingering is enabled. Disconnect only after the command has finished.
 
@@ -36,7 +36,7 @@ Open the assigned URL in a browser and ask a teammate to try it on a phone. A lo
 
 ## Later deployment
 
-Use the same commands after the team's next milestone release. No automatic GitHub deployment is installed. The script snapshots the checked-out commit; it does not fetch by itself, so confirm the revision before running it. A later deploy restarts `vc-app.service` onto the new release after that release passes its health check. The previous release directory remains on disk.
+Use the same commands after the team's next milestone release. No automatic GitHub deployment is installed. The script snapshots the checked-out commit; it does not fetch by itself, so confirm the revision before running it. A later deploy restarts `vc-app.service` onto the new release after that release passes its health check. The previous release directory remains on disk so rollback still has a target. Older release directories are removed.
 
 ```sh
 vc-app status
@@ -54,7 +54,7 @@ If you use local `npm start` in the guest while the service is running, port 300
 
 ## Changing the framework
 
-Maintain these contracts: `npm start` serves on `0.0.0.0:3000`; `npm test` checks meaningful behaviour; `npm run build` builds if needed; `/api/health` returns `{ "ok": true, "revision": "..." }` using `APP_REVISION`. Keep package-lock.json current. Install/build steps run in the archived release. Update deployment and smoke checks deliberately if you choose different contracts.
+Maintain these contracts: `npm start` serves on `0.0.0.0:3000`; `npm test` checks meaningful behaviour; `npm run build` builds if needed; `/api/health` returns `{ "ok": true, "revision": "..." }` using `APP_REVISION`. Keep package-lock.json current. Install/build steps run in the archived release, inside the 2G user scope. Update deployment and smoke checks deliberately if you choose different contracts.
 
 The starter does not automatically load .env. Export local variables or use your runtime's documented env loader. For the deployed process, keep secrets outside Git in `~/.config/vibecode-workshop/app.env` (systemd EnvironmentFile format). Create it yourself only if needed, restrict it to your user, and never paste its contents into evidence. Do not override PORT or APP_REVISION there.
 
@@ -68,10 +68,12 @@ Store persistent data outside release folders, for example `~/.local/share/vibec
 | `deploy` refuses the user or the guest contract | `whoami` must be `vc-team`. Ask the organiser to check `/etc/vc-guest-contract`, `vc-app.service` and lingering. Do not remove the guard |
 | Dirty checkout / wrong branch | Save your work, review/merge it, then deploy main |
 | Tests, install or build fail | Fix the source; the live service has not yet been changed |
+| Another deploy is running | Wait for it to finish and retry. Do not delete the lock file |
+| Install or build hits the 2G memory limit, or the memory controller is not delegated | The live service was not changed. Shrink the build, or ask the organiser to delegate the memory controller |
 | Local health fails | `vc-app status` and `vc-app logs`; check port 3000 and `npm start` |
 | Local health succeeds, HTTPS fails | Give the organiser the time and public error; ask them to check DNS/tunnel |
 | Revision differs | Confirm `git rev-parse HEAD` against local and public health responses |
 | SSH command no longer works after a rename | Ask the organiser for the assigned identity; do not create replacement infrastructure |
-| Recovery says it needs the organiser | Do not delete `~/workshop`, releases or data. Ask the organiser to inspect `vc-app` |
+| Recovery says it needs the organiser | Do not delete `~/workshop`, the active release, the previous release, or data. Ask the organiser to inspect `vc-app` |
 
-A failed deployment may interrupt the demo briefly. Recovery restores the previous release or the placeholder where possible; it cannot undo application data writes or schema changes. Do not delete releases/data or reinstall the guest to repair a process. Ask the organiser if recovery reports failure.
+A failed deployment may interrupt the demo briefly. Recovery restores the previous release or the placeholder where possible; it cannot undo application data writes or schema changes. Do not delete the active release, the previous release, or data, and do not reinstall the guest to repair a process. Ask the organiser if recovery reports failure.
