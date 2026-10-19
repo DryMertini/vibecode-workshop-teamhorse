@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, userInfo } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,6 +16,9 @@ export const UNIT_PATH = '/etc/systemd/user/vc-app.service';
 export const LINGER_PATH = '/var/lib/systemd/linger/vc-team';
 export const APP_SERVICE = 'vc-app.service';
 export const DROP_IN_NAME = '50-workshop-release.conf';
+// systemd treats G as base 1024, so 2G is 2 GiB. Guests have 3 GiB and no swap;
+// the remaining 1 GiB is headroom for the serving app, sshd and the user manager.
+export const BUILD_MEMORY_MAX = '2G';
 const PATH_PATTERN = /^\/[A-Za-z0-9_./-]+$/;
 
 export function dropInPath(home) {
@@ -146,6 +149,165 @@ function writeOwnedFile(path, text) {
   }
 }
 
+// flock(2) on an fd the process keeps open. The kernel drops it when the
+// process exits, including SIGKILL, so a dead deploy cannot block the next one.
+export function acquireDeployLock(lockPath) {
+  mkdirSync(dirname(lockPath), { recursive: true });
+  const fd = openSync(lockPath, constants.O_RDWR | constants.O_CREAT | constants.O_CLOEXEC, 0o644);
+  const result = spawnSync('flock', ['-n', '3'], {
+    stdio: ['ignore', 'pipe', 'pipe', fd],
+    encoding: 'utf8',
+  });
+  if (result.error || result.status !== 0) {
+    closeSync(fd);
+    if (result.error?.code === 'ENOENT') {
+      throw new Error('Cannot lock deploy because flock is missing. The running service was not changed.');
+    }
+    throw new Error('Another deploy is running. Wait for it to finish, then retry.');
+  }
+  let released = false;
+  return {
+    release() {
+      if (released) return;
+      released = true;
+      closeSync(fd);
+    },
+  };
+}
+
+export function memoryControllerDelegated(text) {
+  return typeof text === 'string' && text.trim().split(/\s+/).filter(Boolean).includes('memory');
+}
+
+function userManagerDelegatesMemory() {
+  const shown = spawnSync('systemctl', ['--user', 'show', '-p', 'ControlGroup', '--value'], {
+    encoding: 'utf8',
+    env: sessionEnv(),
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const controlGroup = shown.status === 0 ? shown.stdout.trim() : '';
+  const paths = [];
+  if (controlGroup.startsWith('/')) paths.push(`/sys/fs/cgroup${controlGroup}/cgroup.subtree_control`);
+  const uid = userInfo().uid;
+  paths.push(`/sys/fs/cgroup/user.slice/user-${uid}.slice/user@${uid}.service/cgroup.subtree_control`);
+  return paths.some(path => memoryControllerDelegated(readOptional(path)));
+}
+
+export function memoryBoundedArgv(command, args, memoryMax = BUILD_MEMORY_MAX) {
+  return [
+    'systemd-run', '--user', '--scope', '--quiet',
+    '-p', `MemoryMax=${memoryMax}`,
+    '-p', 'MemorySwapMax=0',
+    '--', command, ...args,
+  ];
+}
+
+function assertMemoryScope() {
+  if (!userManagerDelegatesMemory()) {
+    throw new Error('Cannot memory-bound install/build: the memory controller is not delegated to this user. Refusing to run install or build beside the live app. The running service was not changed.');
+  }
+  const argv = memoryBoundedArgv('/bin/true', []);
+  const result = spawnSync(argv[0], argv.slice(1), {
+    encoding: 'utf8',
+    env: sessionEnv(),
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (result.error || result.status !== 0) {
+    const detail = (result.stderr || result.error?.message || `exit ${result.status}`).trim();
+    throw new Error(`Cannot start a memory-bounded user scope (${BUILD_MEMORY_MAX}, MemorySwapMax=0): ${detail}. Refusing to install or build beside the live app. The running service was not changed.`);
+  }
+}
+
+function runMemoryBounded(command, args, options = {}) {
+  const argv = memoryBoundedArgv(command, args);
+  const result = spawnSync(argv[0], argv.slice(1), {
+    encoding: 'utf8',
+    env: sessionEnv(),
+    ...options,
+    stdio: 'inherit',
+  });
+  if (result.error) {
+    throw new Error(`Could not start a memory-bounded ${command} (${result.error.message}). The running app was not changed.`);
+  }
+  if (result.status === 0) return;
+  const signal = result.signal ? `, signal ${result.signal}` : '';
+  const killed = result.signal === 'SIGKILL' || result.status === 137;
+  if (killed) {
+    throw new Error(`${command} ${args.join(' ')} was killed inside the ${BUILD_MEMORY_MAX} memory limit (exit ${result.status ?? 'none'}${signal}). The running app was not changed. Shrink the install or build, then retry.`);
+  }
+  throw new Error(`${command} ${args.join(' ')} failed (exit ${result.status}${signal}). The running app was not changed.`);
+}
+
+export function workingDirectoryFromDropIn(text) {
+  if (typeof text !== 'string') return null;
+  const match = /^WorkingDirectory=(\/[A-Za-z0-9_./-]+)$/m.exec(text);
+  return match ? match[1] : null;
+}
+
+export function assertInsideReleases(releasesRoot, target) {
+  const root = resolve(releasesRoot);
+  const path = resolve(target);
+  if (path === root || !path.startsWith(`${root}/`)) {
+    throw new Error(`Refusing to touch a path outside the releases directory: ${path}`);
+  }
+  return path;
+}
+
+export function selectReleasesToPrune({ releasesRoot, directories, currentDropIn, previousDropIn, activeRelease }) {
+  const entries = directories.map(dir => assertInsideReleases(releasesRoot, dir));
+  if (typeof previousDropIn === 'string' && !workingDirectoryFromDropIn(previousDropIn)) {
+    return { keep: entries, remove: [] };
+  }
+  const keep = new Set();
+  if (activeRelease) keep.add(resolve(activeRelease));
+  for (const text of [currentDropIn, previousDropIn]) {
+    const dir = workingDirectoryFromDropIn(text);
+    if (dir) keep.add(resolve(dir));
+  }
+  return { keep: [...keep], remove: entries.filter(dir => !keep.has(dir)) };
+}
+
+export function pruneReleaseDirectories({ releasesRoot, directories, currentDropIn, previousDropIn, activeRelease, remove }) {
+  const plan = selectReleasesToPrune({ releasesRoot, directories, currentDropIn, previousDropIn, activeRelease });
+  for (const dir of plan.remove) {
+    assertInsideReleases(releasesRoot, dir);
+    remove(dir);
+  }
+  return plan;
+}
+
+function listReleaseDirectories(releasesRoot) {
+  return readdirSync(releasesRoot, { withFileTypes: true })
+    .filter(entry => entry.isDirectory())
+    .map(entry => join(releasesRoot, entry.name));
+}
+
+function pruneHealthyReleases(releasesRoot, activeRelease, currentDropIn, previousDropIn) {
+  try {
+    const plan = pruneReleaseDirectories({
+      releasesRoot,
+      directories: listReleaseDirectories(releasesRoot),
+      currentDropIn,
+      previousDropIn,
+      activeRelease,
+      remove: dir => rmSync(dir, { recursive: true, force: true }),
+    });
+    if (plan.remove.length === 0) return 'No older releases to remove.';
+    return `Removed ${plan.remove.length} older release(s). The active release and the rollback release were kept.`;
+  } catch (error) {
+    console.error(`Deployed, but old releases were kept: ${error.message}`);
+    return 'Old releases were kept because pruning failed.';
+  }
+}
+
+function removeFailedRelease(releasesRoot, release) {
+  try {
+    rmSync(assertInsideReleases(releasesRoot, release), { recursive: true, force: true });
+  } catch (error) {
+    console.error(`Could not remove the failed release: ${error.message}`);
+  }
+}
+
 async function waitFor(attempts, check) {
   for (let attempt = 0; attempt < attempts; attempt++) {
     try {
@@ -221,40 +383,56 @@ export async function main(args = process.argv.slice(2)) {
   if (checkout) throw new Error(checkout);
   const location = locationRefusal(root, home);
   if (location) throw new Error(location);
-  run('npm', ['test']);
   const share = join(home, '.local/share/vibecode-workshop');
-  const releases = join(share, 'releases');
-  assertReleaseIsolated(releases, home);
-  mkdirSync(releases, { recursive: true });
-  const release = mkdtempSync(join(releases, `${revision.slice(0, 12)}-`));
-  assertReleaseIsolated(release, home);
-  const archive = join(release, 'source.tar');
-  run('git', ['archive', '--format=tar', '--output', archive, revision]);
-  run('tar', ['-xf', archive, '-C', release]);
-  run('npm', ['ci'], { cwd: release });
-  run('npm', ['run', 'build', '--if-present'], { cwd: release });
-  writeFileSync(join(release, 'REVISION'), `${revision}\n`);
-  const unit = serviceDropIn({ release, home, revision, nodeDirectory });
-  const path = dropInPath(home);
-  const previousDropIn = existsSync(path) ? readFileSync(path, 'utf8') : null;
-  let switched = false;
+  mkdirSync(share, { recursive: true });
+  const deployLock = acquireDeployLock(join(share, 'deploy.lock'));
   try {
-    writeOwnedFile(path, unit);
-    switched = true;
-    systemctlUser('daemon-reload');
-    systemctlUser('restart', APP_SERVICE);
-    if (!await waitForRevision(revision)) throw new Error('New app did not report the intended revision within the startup window');
-    systemctlUser('enable', APP_SERVICE);
-    console.log(`DEPLOYED ${revision}\nRelease retained at ${release}\nUser service ${APP_SERVICE} is active. ~/workshop was not modified.\nCheck your assigned HTTPS URL and browser journey next.\nStatus: vc-app status\nLogs: vc-app logs`);
-  } catch (error) {
-    if (!switched) throw error;
-    console.error(`Deploy failed: ${error.message}. Attempting to restore the previous release or the guest placeholder.`);
-    const recovery = await restore(previousDropIn, home, revision);
-    if (recovery.errors.length) console.error(`RECOVERY NEEDS ORGANISER: ${recovery.errors.join('; ')}`);
-    else console.error(recovery.plan.restore === 'placeholder'
-      ? 'Guest placeholder restored; verify http://127.0.0.1:3000/.'
-      : 'Previous release restored; verify http://127.0.0.1:3000/api/health.');
-    throw error;
+    run('npm', ['test']);
+    const releases = join(share, 'releases');
+    assertReleaseIsolated(releases, home);
+    mkdirSync(releases, { recursive: true });
+    assertMemoryScope();
+    let release = null;
+    let switched = false;
+    let previousDropIn = null;
+    try {
+      release = mkdtempSync(join(releases, `${revision.slice(0, 12)}-`));
+      assertReleaseIsolated(release, home);
+      const archive = join(release, 'source.tar');
+      run('git', ['archive', '--format=tar', '--output', archive, revision]);
+      run('tar', ['-xf', archive, '-C', release]);
+      runMemoryBounded('npm', ['ci'], { cwd: release });
+      runMemoryBounded('npm', ['run', 'build', '--if-present'], { cwd: release });
+      writeFileSync(join(release, 'REVISION'), `${revision}\n`);
+      const unit = serviceDropIn({ release, home, revision, nodeDirectory });
+      const path = dropInPath(home);
+      previousDropIn = existsSync(path) ? readFileSync(path, 'utf8') : null;
+      writeOwnedFile(path, unit);
+      switched = true;
+      systemctlUser('daemon-reload');
+      systemctlUser('restart', APP_SERVICE);
+      if (!await waitForRevision(revision)) throw new Error('New app did not report the intended revision within the startup window');
+      systemctlUser('enable', APP_SERVICE);
+      const pruneNote = pruneHealthyReleases(releases, release, unit, previousDropIn);
+      console.log(`DEPLOYED ${revision}\nRelease kept at ${release}\n${pruneNote}\nUser service ${APP_SERVICE} is active. ~/workshop was not modified.\nCheck your assigned HTTPS URL and browser journey next.\nStatus: vc-app status\nLogs: vc-app logs`);
+    } catch (error) {
+      if (switched) {
+        console.error(`Deploy failed: ${error.message}. Attempting to restore the previous release or the guest placeholder.`);
+        const recovery = await restore(previousDropIn, home, revision);
+        if (recovery.errors.length) console.error(`RECOVERY NEEDS ORGANISER: ${recovery.errors.join('; ')}`);
+        else {
+          console.error(recovery.plan.restore === 'placeholder'
+            ? 'Guest placeholder restored; verify http://127.0.0.1:3000/.'
+            : 'Previous release restored; verify http://127.0.0.1:3000/api/health.');
+          removeFailedRelease(releases, release);
+        }
+      } else if (release) {
+        removeFailedRelease(releases, release);
+      }
+      throw error;
+    }
+  } finally {
+    deployLock.release();
   }
 }
 

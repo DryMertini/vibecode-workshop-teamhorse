@@ -1,8 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
-  assertReleaseIsolated, checkoutRefusal, guestRefusal, locationRefusal, previewDropIn, recoveryPlan, serviceDropIn,
+  BUILD_MEMORY_MAX, acquireDeployLock, assertReleaseIsolated, checkoutRefusal, guestRefusal, locationRefusal,
+  memoryBoundedArgv, memoryControllerDelegated, previewDropIn, pruneReleaseDirectories, recoveryPlan, serviceDropIn,
 } from '../scripts/deploy.mjs';
 
 const home = '/home/vc-team';
@@ -96,4 +101,152 @@ test('deploy helper does not call a privilege tool or install a system unit', ()
   assert.equal(source.includes('team-hello'), false);
   assert.equal(source.includes('workshop-app'), false);
   assert.equal(source.includes('student'), false);
+});
+
+test('prune keeps the active release and the rollback release', () => {
+  const root = '/home/vc-team/.local/share/vibecode-workshop/releases';
+  const active = `${root}/active`;
+  const previous = `${root}/previous`;
+  const stale = `${root}/stale`;
+  const removed = [];
+  const plan = pruneReleaseDirectories({
+    releasesRoot: root,
+    directories: [stale, active, previous],
+    currentDropIn: `[Service]\nWorkingDirectory=${active}\n`,
+    previousDropIn: `[Service]\nWorkingDirectory=${previous}\n`,
+    activeRelease: active,
+    remove: dir => removed.push(dir),
+  });
+  assert.deepEqual(removed, [stale]);
+  assert.ok(plan.keep.includes(active));
+  assert.ok(plan.keep.includes(previous));
+});
+
+test('a first deploy keeps only the active release when rollback is the placeholder', () => {
+  const root = '/home/vc-team/.local/share/vibecode-workshop/releases';
+  const removed = [];
+  pruneReleaseDirectories({
+    releasesRoot: root,
+    directories: [`${root}/active`, `${root}/old`],
+    currentDropIn: `WorkingDirectory=${root}/active\n`,
+    previousDropIn: null,
+    activeRelease: `${root}/active`,
+    remove: dir => removed.push(dir),
+  });
+  assert.deepEqual(removed, [`${root}/old`]);
+});
+
+test('an unreadable previous drop-in does not prune', () => {
+  const root = '/home/vc-team/.local/share/vibecode-workshop/releases';
+  const removed = [];
+  const plan = pruneReleaseDirectories({
+    releasesRoot: root,
+    directories: [`${root}/a`, `${root}/b`],
+    currentDropIn: `WorkingDirectory=${root}/a\n`,
+    previousDropIn: 'not a unit',
+    activeRelease: `${root}/a`,
+    remove: dir => removed.push(dir),
+  });
+  assert.deepEqual(plan.remove, []);
+  assert.deepEqual(removed, []);
+});
+
+test('prune refuses paths outside the releases directory and deletes nothing', () => {
+  const root = '/home/vc-team/.local/share/vibecode-workshop/releases';
+  const removed = [];
+  const remove = dir => removed.push(dir);
+  const outside = [
+    '/home/vc-team/workshop',
+    '/home/vc-team/workshop/app',
+    '/home/vc-team/.local/share/vibecode-workshop/data',
+    `${root}/../../workshop`,
+    `${root}/../data/db`,
+    '/home/vc-team/.local/share/vibecode-workshop/releases-other/x',
+    root,
+  ];
+  for (const target of outside) {
+    assert.throws(() => pruneReleaseDirectories({
+      releasesRoot: root,
+      directories: [target, `${root}/stale`],
+      currentDropIn: `WorkingDirectory=${root}/active\n`,
+      previousDropIn: null,
+      activeRelease: `${root}/active`,
+      remove,
+    }), /outside the releases directory/);
+  }
+  assert.deepEqual(removed, []);
+});
+
+test('install and build stay under the 3GiB guest limit', () => {
+  assert.equal(BUILD_MEMORY_MAX, '2G');
+  const argv = memoryBoundedArgv('npm', ['ci']);
+  assert.equal(argv[0], 'systemd-run');
+  assert.ok(argv.includes('--user'));
+  assert.ok(argv.includes('--scope'));
+  assert.ok(argv.includes(`MemoryMax=${BUILD_MEMORY_MAX}`));
+  assert.ok(argv.includes('MemorySwapMax=0'));
+  const dash = argv.indexOf('--');
+  assert.deepEqual(argv.slice(dash + 1), ['npm', 'ci']);
+  assert.equal(argv.includes('sudo'), false);
+  const build = memoryBoundedArgv('npm', ['run', 'build', '--if-present']);
+  assert.deepEqual(build.slice(build.indexOf('--') + 1), ['npm', 'run', 'build', '--if-present']);
+});
+
+test('memory delegation recognises only the memory controller', () => {
+  assert.equal(memoryControllerDelegated('cpu memory pids'), true);
+  assert.equal(memoryControllerDelegated('memory'), true);
+  assert.equal(memoryControllerDelegated('cpu pids'), false);
+  assert.equal(memoryControllerDelegated('notmemory'), false);
+  assert.equal(memoryControllerDelegated(''), false);
+  assert.equal(memoryControllerDelegated(null), false);
+});
+
+test('deploy lock rejects a second holder and releases when the holder dies', async () => {
+  const path = join(tmpdir(), `vc-deploy-lock-${process.pid}-${Date.now()}`);
+  rmSync(path, { force: true });
+  const first = acquireDeployLock(path);
+  try {
+    assert.throws(() => acquireDeployLock(path), /another deploy is running/i);
+  } finally {
+    first.release();
+  }
+  const second = acquireDeployLock(path);
+  second.release();
+
+  const held = join(tmpdir(), `vc-deploy-held-${process.pid}-${Date.now()}.lock`);
+  rmSync(held, { force: true });
+  const modulePath = fileURLToPath(new URL('../scripts/deploy.mjs', import.meta.url));
+  const child = spawn(process.execPath, [
+    '--input-type=module',
+    '-e',
+    `import { acquireDeployLock } from ${JSON.stringify(modulePath)};
+     acquireDeployLock(process.argv[1]);
+     console.log('held');
+     setInterval(() => {}, 1000);`,
+    held,
+  ], { stdio: ['ignore', 'pipe', 'pipe'] });
+  let output = '';
+  let childErr = '';
+  child.stdout.on('data', chunk => { output += chunk; });
+  child.stderr.on('data', chunk => { childErr += chunk; });
+  try {
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`holder did not start: ${output} ${childErr}`)), 5000);
+      child.stdout.on('data', () => {
+        if (output.includes('held')) {
+          clearTimeout(timer);
+          resolve();
+        }
+      });
+    });
+    assert.throws(() => acquireDeployLock(held), /another deploy is running/i);
+    child.kill('SIGKILL');
+    await new Promise(resolve => child.once('exit', resolve));
+    const after = acquireDeployLock(held);
+    after.release();
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+    rmSync(path, { force: true });
+    rmSync(held, { force: true });
+  }
 });
