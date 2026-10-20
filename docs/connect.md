@@ -2,20 +2,40 @@
 
 Commands below use a macOS/Linux/WSL shell. Install [Git](https://git-scm.com/downloads), [Node.js 22 or newer](https://nodejs.org/en/download) and optionally [GitHub CLI](https://cli.github.com/manual/installation) on your laptop. The assigned team container supplies its own runtime.
 
-## 1. Register and obtain your assigned environment
+## 1. Obtain your assigned environment
 
-Open [intra.land/vibecode](https://intra.land/vibecode), register with your linked 42 account, and join or create your team. Use the page's current deadlines; do not rely on a copied schedule in this repo.
+Each team receives an organiser handout (e.g. `team-NN.md`) with:
+- A private SSH key file: `team-NN.key`
+- Pinned known hosts: `team-NN.known_hosts`
+- An SSH port (e.g. `220NN`) and container username `vc-team`
+- A public HTTPS URL: `https://team-NN.intra.land`
 
-Every person needs their own SSH public key. If you do not already have a suitable key, run this on **your laptop**:
+Before connecting, set secure permissions on the private key:
 
 ```sh
-ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_workshop -C workshop
-cat ~/.ssh/id_ed25519_workshop.pub
+chmod 600 team-NN.key
 ```
 
-If that file already exists, reuse it or choose another filename; do not overwrite it. Upload only the `.pub` content in the workshop's SSH-key form. Keep the private file on your laptop. Every teammate uploads their own key through their own account.
+Copy and run the exact SSH command from your team handout (`team-NN.md`) from the directory where `team-NN.key` and `team-NN.known_hosts` are stored:
 
-Copy the actual SSH command and HTTPS URL provided by the organiser/workshop page. If none is available, ask the organiser to provision the team. There is no address hidden in this starter. Do not invent a hostname from the team name, and do not assume renaming changes connection details.
+```sh
+ssh -i team-NN.key -p <port> -o UserKnownHostsFile=team-NN.known_hosts vc-team@<host>
+```
+
+### Adding teammate personal SSH keys (self-service)
+
+The team private key in the handout is the initial shared bootstrap credential provided by the organiser. To follow good credential security (AGENTS.md rule 8), teammates are encouraged to self-service add their individual personal public keys to `~/.ssh/authorized_keys` inside the container rather than copying private keys between laptops:
+
+```sh
+echo "ssh-ed25519 AAAAC3... teammate@laptop" >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+```
+
+Once added, that teammate can connect directly using their personal key:
+
+```sh
+ssh -i ~/.ssh/id_ed25519 -p <port> -o UserKnownHostsFile=team-NN.known_hosts vc-team@<host>
+```
 
 Your personal notes may go in `.workshop.local.md`, which is ignored by Git. Never commit private host addresses, usernames, keys or access tokens.
 
@@ -47,7 +67,13 @@ Alternatively use GitHub's Fork button and clone the HTTPS URL from your fork's 
 
 ## 3. Enter the workshop machine
 
-Run the organiser's assigned SSH command **on your laptop**, using `-i ~/.ssh/id_ed25519_workshop` if you created that key. Verify a first-connection fingerprint with the organiser before accepting it. The command opens your team's interactive container shell. Run subsequent deployment commands inside that shell.
+Run the organiser's assigned SSH command **on your laptop** from the folder containing the key and known_hosts files:
+
+```sh
+ssh -i team-NN.key -p <port> -o UserKnownHostsFile=team-NN.known_hosts vc-team@<host>
+```
+
+The command opens your team's interactive container shell. Run subsequent deployment commands inside that shell.
 
 Inside the shell, confirm:
 
@@ -72,7 +98,29 @@ npm test
 
 You can keep authenticated coding agents and GitHub pushes on your laptops, then fetch the public fork in the container. This avoids requiring an agent login on the team server. A private fork needs a separately authorised Git credential in the container; ask for help rather than copying your laptop's private key or sharing a token.
 
-Do not assume `scp`, remote IDE server installation or `ssh host 'command'` works: the platform entry shell is an interactive container gateway. Use the interactive session and Git unless the organiser has tested another route.
+### Previewing a teammate's dev server
+
+To preview a development server running inside the container (e.g. `PORT=3001 npm start` or `npx next dev -p 3001`), use SSH port forwarding from your laptop:
+
+```sh
+ssh -i team-NN.key -p <port> -o UserKnownHostsFile=team-NN.known_hosts -L 3001:127.0.0.1:3001 vc-team@<host>
+```
+
+Then open `http://localhost:3001` in your laptop browser.
+
+### Keeping sessions alive across network drops
+
+Use `tmux` inside the container so long-running coding agent sessions or builds remain active if your SSH connection drops:
+
+```sh
+tmux new -s vibe
+```
+
+If disconnected, simply reconnect SSH and reattach:
+
+```sh
+tmux attach -t vibe
+```
 
 Continue with [deployment](deploy.md).
 
@@ -80,7 +128,7 @@ Continue with [deployment](deploy.md).
 
 | Symptom | Check / action |
 |---|---|
-| `Permission denied (publickey)` | Correct assigned user/host? Correct `-i` private-key path? Matching public key uploaded on your account? Ask organiser to check key sync. |
+| `Permission denied (publickey)` | Did you run `chmod 600 team-NN.key`? Are you in the directory containing `team-NN.key` and `team-NN.known_hosts`? If using a personal key, did a teammate append it to `~/.ssh/authorized_keys`? |
 | `Could not resolve hostname` | Copy the exact supplied hostname; ask organiser to verify DNS. |
 | GitHub clone works but push fails | Check collaborator invitation and your own GitHub authentication. |
 | PR targets the workshop starter | Run `gh repo set-default YOUR-OWNER/YOUR-FORK`; explicitly use `--repo` on PR commands. |

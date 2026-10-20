@@ -39,6 +39,7 @@ EnvironmentFile=-${home}/.config/vibecode-workshop/app.env
 Environment=HOST=0.0.0.0
 Environment=PORT=3000
 Environment=APP_REVISION=${revision}
+Environment=WORKSHOP_GIT_SHA=${revision}
 ExecStart=
 ExecStart=/usr/bin/env npm start
 TimeoutStopSec=15
@@ -193,13 +194,38 @@ function userManagerDelegatesMemory() {
   return paths.some(path => memoryControllerDelegated(readOptional(path)));
 }
 
-export function memoryBoundedArgv(command, args, memoryMax = BUILD_MEMORY_MAX) {
-  return [
+export function memoryBoundedArgv(command, args, memoryMax = BUILD_MEMORY_MAX, unitName = null) {
+  const argv = [
     'systemd-run', '--user', '--scope', '--quiet',
+  ];
+  if (unitName) {
+    argv.push(`--unit=${unitName}`);
+  }
+  argv.push(
     '-p', `MemoryMax=${memoryMax}`,
     '-p', 'MemorySwapMax=0',
     '--', command, ...args,
-  ];
+  );
+  return argv;
+}
+
+export function queryScopeResult(unitName) {
+  try {
+    const result = spawnSync('systemctl', ['--user', 'show', `${unitName}.scope`, '-p', 'Result', '--value'], {
+      encoding: 'utf8',
+      env: sessionEnv(),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    return result.status === 0 ? result.stdout.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+export function isOomKilled(result, scopeResult) {
+  if (scopeResult === 'oom-kill') return true;
+  if (result && (result.signal === 'SIGKILL' || result.status === 137)) return true;
+  return false;
 }
 
 function assertMemoryScope() {
@@ -219,19 +245,27 @@ function assertMemoryScope() {
 }
 
 function runMemoryBounded(command, args, options = {}) {
-  const argv = memoryBoundedArgv(command, args);
+  const unitName = options.unitName || `vc-deploy-${process.pid}-${Date.now()}`;
+  const argv = memoryBoundedArgv(command, args, BUILD_MEMORY_MAX, unitName);
   const result = spawnSync(argv[0], argv.slice(1), {
     encoding: 'utf8',
     env: sessionEnv(),
     ...options,
-    stdio: 'inherit',
+    stdio: options.stdio || 'inherit',
   });
   if (result.error) {
     throw new Error(`Could not start a memory-bounded ${command} (${result.error.message}). The running app was not changed.`);
   }
   if (result.status === 0) return;
+  const scopeResult = queryScopeResult(unitName);
+  try {
+    spawnSync('systemctl', ['--user', 'reset-failed', `${unitName}.scope`], {
+      env: sessionEnv(),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch {}
   const signal = result.signal ? `, signal ${result.signal}` : '';
-  const killed = result.signal === 'SIGKILL' || result.status === 137;
+  const killed = isOomKilled(result, scopeResult);
   if (killed) {
     throw new Error(`${command} ${args.join(' ')} was killed inside the ${BUILD_MEMORY_MAX} memory limit (exit ${result.status ?? 'none'}${signal}). The running app was not changed. Shrink the install or build, then retry.`);
   }
@@ -308,6 +342,78 @@ function removeFailedRelease(releasesRoot, release) {
   }
 }
 
+export function formatObservation(observed) {
+  if (!observed) return 'no response received';
+  if (observed.error) return observed.error;
+  const status = `HTTP ${observed.status}${observed.statusText ? ` ${observed.statusText}` : ''}`;
+  if (observed.json !== null && typeof observed.json === 'object') {
+    if ('revision' in observed.json) {
+      return `${status}, revision seen: ${JSON.stringify(observed.json.revision)} (body: ${JSON.stringify(observed.json)})`;
+    }
+    return `${status}, body: ${JSON.stringify(observed.json)}`;
+  }
+  const raw = typeof observed.bodyText === 'string' ? observed.bodyText : '';
+  const excerpt = raw.trim().replace(/\s+/g, ' ').slice(0, 100);
+  return `${status}${excerpt ? `, body excerpt: "${excerpt}"` : ''}`;
+}
+
+export function healthFailureMessage({ lastObservation, expectedRevision, url = 'http://127.0.0.1:3000/api/health' }) {
+  const observedText = formatObservation(lastObservation);
+  return `New app did not report the intended revision within the startup window.
+Last observed on ${url}: ${observedText}
+Expected revision: ${expectedRevision}
+Expected JSON shape: {"ok":true,"revision":"${expectedRevision}"}
+Run: vc-app logs`;
+}
+
+export async function probeHealth(url = 'http://127.0.0.1:3000/api/health', timeoutMs = 1000) {
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    const text = await response.text();
+    let json = null;
+    try { json = JSON.parse(text); } catch { json = null; }
+    return {
+      ok: response.ok,
+      status: response.status,
+      statusText: response.statusText,
+      bodyText: text,
+      json,
+    };
+  } catch (error) {
+    const code = error?.cause?.code || error?.code;
+    const isConnRefused = code === 'ECONNREFUSED'
+      || String(error?.message).includes('ECONNREFUSED')
+      || String(error?.cause?.message).includes('ECONNREFUSED');
+    const isTimeout = error?.name === 'TimeoutError'
+      || error?.name === 'AbortError'
+      || code === 'ETIMEDOUT'
+      || String(error?.message).includes('timeout');
+    let kind = 'connection error';
+    if (isConnRefused) kind = 'connection refused';
+    else if (isTimeout) kind = 'timeout';
+    else if (error?.message) kind = `connection error (${error.message})`;
+    return {
+      ok: false,
+      error: kind,
+      rawError: error,
+    };
+  }
+}
+
+export async function waitForRevision(revision, { attempts = 15, intervalMs = 1000, probe = probeHealth, url = 'http://127.0.0.1:3000/api/health' } = {}) {
+  let lastObservation = null;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    lastObservation = await probe(url);
+    if (lastObservation.ok && lastObservation.json?.ok === true && lastObservation.json?.revision === revision) {
+      return { ok: true, lastObservation };
+    }
+    if (attempt < attempts - 1) {
+      await new Promise(done => setTimeout(done, intervalMs));
+    }
+  }
+  return { ok: false, lastObservation };
+}
+
 async function waitFor(attempts, check) {
   for (let attempt = 0; attempt < attempts; attempt++) {
     try {
@@ -316,14 +422,6 @@ async function waitFor(attempts, check) {
     await new Promise(done => setTimeout(done, 1000));
   }
   return false;
-}
-
-async function waitForRevision(revision) {
-  return waitFor(15, async () => {
-    const response = await fetch('http://127.0.0.1:3000/api/health', { signal: AbortSignal.timeout(1000) });
-    const body = await response.json();
-    return response.ok && body.ok === true && body.revision === revision;
-  });
 }
 
 async function restoredService(failedRevision, previousDropIn) {
@@ -411,13 +509,16 @@ export async function main(args = process.argv.slice(2)) {
       switched = true;
       systemctlUser('daemon-reload');
       systemctlUser('restart', APP_SERVICE);
-      if (!await waitForRevision(revision)) throw new Error('New app did not report the intended revision within the startup window');
+      const health = await waitForRevision(revision);
+      if (!health.ok) {
+        throw new Error(healthFailureMessage({ lastObservation: health.lastObservation, expectedRevision: revision }));
+      }
       systemctlUser('enable', APP_SERVICE);
       const pruneNote = pruneHealthyReleases(releases, release, unit, previousDropIn);
       console.log(`DEPLOYED ${revision}\nRelease kept at ${release}\n${pruneNote}\nUser service ${APP_SERVICE} is active. ~/workshop was not modified.\nCheck your assigned HTTPS URL and browser journey next.\nStatus: vc-app status\nLogs: vc-app logs`);
     } catch (error) {
       if (switched) {
-        console.error(`Deploy failed: ${error.message}. Attempting to restore the previous release or the guest placeholder.`);
+        console.error('Deploy failed: attempting to restore the previous release or the guest placeholder.');
         const recovery = await restore(previousDropIn, home, revision);
         if (recovery.errors.length) console.error(`RECOVERY NEEDS ORGANISER: ${recovery.errors.join('; ')}`);
         else {

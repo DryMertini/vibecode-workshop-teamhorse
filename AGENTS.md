@@ -20,7 +20,7 @@ Read IDEA.md, PLAN.md, .ai/rules.md and the role brief for your assignment. Insp
 5. Save evidence under `.ai/work/M1.1/`: brief.md, validation.md, review.md. State reviewed base and head SHAs. Do not hide failures, skipped checks or missing browser verification.
 6. REQUEST CHANGES returns to the coder; a new SHA requires re-review. APPROVE must explain what was checked. Self-approval is not an independent review.
 7. Changes merge through a PR within the team's fork. Explicitly target that fork, not the workshop starter. Main is the team's reviewed demo source, not an automatic production deployment.
-8. Keep secrets and private connection details out of commits. Do not copy credentials between teammates; use each person's authorised account/key. Do not add attribution trailers, session links or generated-by lines to commits or PRs.
+8. Keep secrets and private connection details out of commits. Do not copy private keys between teammates; use each person's authorised personal account/key (the handout team key serves as the initial bootstrap credential). Do not add attribution trailers, session links or generated-by lines to commits or PRs.
 9. Never delete app data, another team's files or hosting resources to repair your app. Diagnose and ask the organiser for platform failures.
 10. Before ending a session, save a short handoff in `.ai/sessions/`, update `.ai/context.md`, and add a pitfall only when there is a new lesson.
 
@@ -36,6 +36,17 @@ IDEA.md owns the problem. PLAN.md owns planned outcomes, step status and depende
 - `npm run doctor` — environment diagnosis.
 - `npm run deploy:preview` — print the proposed `vc-app` user drop-in without changing services.
 - `npm run deploy` — release on the assigned workshop guest as `vc-team`, without sudo; see docs/deploy.md.
-- `npm run smoke -- https://ASSIGNED-URL` — check the served revision.
+- `npm run smoke -- https://ASSIGNED-URL` — check the served revision (run on your laptop for public HTTPS).
+
+## Framework replacement contract
+
+If your team replaces the starter with Next.js, Vite, or another framework, you must preserve these deployment contracts:
+1. **Preserve scripts in package.json:** keep `"deploy": "node scripts/deploy.mjs"`, `"smoke": "node scripts/smoke.mjs"`, `"doctor": "node scripts/doctor.mjs"`, and `"test": "..."`.
+2. **Preserve the `scripts/` directory:** `scripts/deploy.mjs`, `scripts/smoke.mjs`, and `scripts/doctor.mjs` must remain in the repository.
+3. **Commit the lockfile:** always commit `package-lock.json` (`npm ci` runs during deployment in a memory-bounded scope).
+4. **`start` script:** must listen on `PORT` (or default `3000`), binding to `0.0.0.0` or `127.0.0.1`.
+5. **`/api/health` endpoint:** must return HTTP 200 JSON `{"ok": true, "revision": "..."}` matching `process.env.APP_REVISION`.
+6. **Network restriction:** server applications running inside the container cannot call their own or another team's public `*.intra.land` URL because Cloudflare challenges datacenter IPs. For server health checks inside the guest, probe `http://127.0.0.1:3000/api/health`.
+7. **Test contract:** Deploy runs `npm test` first and refuses on failure. When you replace or delete `server.mjs`, delete or rewrite `test/app.test.mjs` (which imports `server.mjs`); keep `test/deploy.test.mjs`, which only imports `scripts/`, or set `"test": "node --test test/deploy.test.mjs"` (or your framework's test runner).
 
 Do not claim hosted acceptance from a local green test. After UI changes, inspect the browser at desktop and phone widths, exercise the user journey and record evidence. Test scope must match the risk; do not manufacture tests merely to obtain a green badge.

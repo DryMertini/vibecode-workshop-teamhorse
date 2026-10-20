@@ -47,9 +47,21 @@ npm start                      # page on port 3000
 npm test                       # real HTTP and deployment-contract tests
 npm run deploy:preview         # print the vc-app user drop-in, without changing services
 npm run deploy                 # assigned workshop guest only, as vc-team, without sudo
-npm run smoke -- https://YOUR-ASSIGNED-URL
+npm run smoke -- https://YOUR-ASSIGNED-URL  # run on your laptop to verify public HTTPS
 ```
 
 The supplied deploy command deploys the checked-out, committed `main` revision manually. A GitHub push does not deploy it. No participant DNS changes are required. Use the SSH command and HTTPS URL supplied by the organiser; never infer connection details from a display name.
 
-Your team may change frameworks after updating the run, build, health and deployment contracts. Keep the first useful demo small. [Organiser preflight](docs/organiser.md) lists what must be verified before handing this starter to students.
+Run `npm run smoke -- https://YOUR-ASSIGNED-URL` on your laptop to verify the public HTTPS route. On the workshop guest, run `curl --fail http://127.0.0.1:3000/api/health` or `npm run smoke -- https://YOUR-ASSIGNED-URL` (on the guest, smoke automatically probes local `127.0.0.1:3000` because Cloudflare challenges datacenter IPs; on your laptop it checks the public HTTPS route). A team app cannot call its own or another team's public URL from inside the container.
+
+### Replacing the framework
+
+Your team may change frameworks (e.g. Next.js, Vite) after updating the run, build, health and deployment contracts. If you replace the starter, you must preserve:
+1. The `"deploy": "node scripts/deploy.mjs"`, `"smoke": "node scripts/smoke.mjs"`, `"doctor": "node scripts/doctor.mjs"`, and `"test": "..."` scripts in `package.json`.
+2. The `scripts/` directory (`scripts/deploy.mjs`, `scripts/smoke.mjs`, `scripts/doctor.mjs`).
+3. A committed `package-lock.json` (`npm ci` runs during deployment).
+4. A `"start"` script listening on `PORT` (or default `3000`), binding to `0.0.0.0` or `127.0.0.1`.
+5. A `/api/health` route returning JSON `{"ok": true, "revision": "..."}` matching `process.env.APP_REVISION`.
+6. Deployment runs `npm test` first and refuses on failure. When you replace or delete the starter's `server.mjs`, delete or rewrite `test/app.test.mjs` (which imports `server.mjs`), and keep `test/deploy.test.mjs` (set `"test": "node --test test/deploy.test.mjs"` or your framework test runner).
+
+See [deployment guide](docs/deploy.md) for proven copy-paste recipes for Next.js 16 and static Vite SPAs. Keep the first useful demo small. [Organiser preflight](docs/organiser.md) lists what must be verified before handing this starter to students.
