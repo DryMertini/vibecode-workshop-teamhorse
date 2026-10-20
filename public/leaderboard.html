@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Teamhorse Run Club leaderboard and club stats.">
+  <title>Leaderboard · Teamhorse Run Club</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/leaderboard.js" defer></script>
+</head>
+<body>
+  <header><a class="wordmark" href="/">TEAMHORSE<span> / RUN CLUB</span></a><a class="status" href="/run">Go run →</a></header>
+  <main>
+    <p class="eyebrow">Leaderboard</p>
+    <h1>Who's leading the herd?</h1>
+    <p class="intro">Club stats come live from the run board. Rankings appear once finished runs are logged.</p>
+
+    <section aria-labelledby="stats-title">
+      <h2 id="stats-title" class="visually-hidden">Club stats</h2>
+      <dl class="stats">
+        <div class="stat"><dt>Runs posted</dt><dd id="stat-runs">—</dd></div>
+        <div class="stat"><dt>Coming up</dt><dd id="stat-upcoming">—</dd></div>
+        <div class="stat"><dt>I'm ins</dt><dd id="stat-joins">—</dd></div>
+        <div class="stat"><dt>Km planned</dt><dd id="stat-km">—</dd></div>
+      </dl>
+      <p id="stats-message" class="message" role="status" aria-live="polite"></p>
+    </section>
+
+    <section aria-labelledby="ranks-title">
+      <h2 id="ranks-title">Rankings</h2>
+      <table class="ranks">
+        <thead><tr><th scope="col">#</th><th scope="col">Runner</th><th scope="col">Runs</th><th scope="col">Km</th></tr></thead>
+        <tbody>
+          <tr class="ranks-empty"><td colspan="4">
+            <strong>The track is empty.</strong>
+            <span>No finished runs are logged yet. The first runner to log one takes the top spot.</span>
+          </td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+  <footer><span>Stats count every run on the board, including ones that have already started.</span><a href="/">Home</a></footer>
+</body>
+</html>

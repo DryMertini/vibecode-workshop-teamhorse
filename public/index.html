@@ -3,24 +3,46 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Your workshop starting point: one idea, one team, one useful live demo.">
-  <title>Your first live step · Vibecode workshop</title>
+  <meta name="description" content="Teamhorse Run Club: find a run, join it, and climb the leaderboard.">
+  <title>Teamhorse Run Club</title>
+  <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/style.css">
 </head>
-<body>
-  <header><a class="wordmark" href="/">VIBECODE<span> / WORKSHOP</span></a><span class="status">Starting point</span></header>
-  <main>
-    <p class="eyebrow">01 / Make something useful</p>
-    <h1>An idea is a start.<br>A working demo is proof.</h1>
-    <p class="intro">Your app is running. Now pick one person, one problem and one action you can help them complete.</p>
-    <ol class="steps">
-      <li><span class="number">01</span><h2>Agree the goal.</h2><p>Write who it helps and what they can do. Challenge what you are assuming.</p></li>
-      <li><span class="number">02</span><h2>Build one step.</h2><p>Give the agent an outcome and cases to check. Keep the change small enough to review.</p></li>
-      <li><span class="number">03</span><h2>Watch it work.</h2><p>Review the change. Let someone try the task. Use what happens to choose your next step.</p></li>
-    </ol>
-    <a class="action" href="https://intra.land/vibecode">Open the workshop <span aria-hidden="true">↗</span></a>
-    <p class="next">Your next move: agree the first useful journey with your team.</p>
+<body class="landing">
+  <header><a class="wordmark" href="/">TEAMHORSE<span> / RUN CLUB</span></a><span class="status">Gallop together</span></header>
+  <main class="hero">
+    <div class="stage" aria-hidden="true">
+      <svg class="horse" viewBox="0 0 420 280" role="presentation">
+        <g class="speed">
+          <line x1="20" y1="90" x2="90" y2="90"/>
+          <line x1="0" y1="130" x2="60" y2="130"/>
+          <line x1="30" y1="170" x2="85" y2="170"/>
+        </g>
+        <line class="ground" x1="0" y1="252" x2="420" y2="252"/>
+        <g class="gallop">
+          <!-- far legs, half a stride behind the near legs -->
+          <g transform="translate(262 142)"><g class="leg front far"><rect x="-7" y="0" width="14" height="52" rx="7"/><g transform="translate(0 50)"><g class="shin front"><rect x="-5" y="0" width="10" height="50" rx="5"/><rect class="hoof" x="-7" y="44" width="16" height="10" rx="3"/></g></g></g></g>
+          <g transform="translate(150 138)"><g class="leg rear far"><rect x="-9" y="0" width="18" height="54" rx="9"/><g transform="translate(0 52)"><g class="shin rear"><rect x="-5" y="0" width="10" height="48" rx="5"/><rect class="hoof" x="-7" y="42" width="16" height="10" rx="3"/></g></g></g></g>
+          <path class="tail" d="M118 108 C 92 100 72 118 62 150 C 80 140 96 132 120 124 Z"/>
+          <ellipse class="body" cx="200" cy="122" rx="92" ry="40"/>
+          <path class="body" d="M244 106 L 296 46 C 304 36 318 32 330 40 L 364 66 C 372 72 368 86 356 86 L 338 84 C 330 84 322 80 316 76 L 294 134 Z"/>
+          <path class="body" d="M306 42 L 310 20 L 320 38 Z"/>
+          <path class="mane" d="M300 46 C 290 62 278 80 262 104 L 272 106 C 286 84 298 66 310 50 Z"/>
+          <circle class="eye" cx="334" cy="56" r="3.5"/>
+          <!-- near legs -->
+          <g transform="translate(250 146)"><g class="leg front near"><rect x="-8" y="0" width="16" height="52" rx="8"/><g transform="translate(0 50)"><g class="shin front"><rect x="-6" y="0" width="12" height="50" rx="6"/><rect class="hoof" x="-8" y="44" width="18" height="10" rx="3"/></g></g></g></g>
+          <g transform="translate(138 142)"><g class="leg rear near"><rect x="-10" y="0" width="20" height="54" rx="10"/><g transform="translate(0 52)"><g class="shin rear"><rect x="-6" y="0" width="12" height="48" rx="6"/><rect class="hoof" x="-8" y="42" width="18" height="10" rx="3"/></g></g></g></g>
+        </g>
+      </svg>
+    </div>
+    <p class="eyebrow">Teamhorse Run Club</p>
+    <h1>Run with the herd.</h1>
+    <p class="intro">Find the next club run, tap I'm in, and see who's leading the pack.</p>
+    <nav class="big-buttons" aria-label="Choose">
+      <a class="big run-button" href="/run">RUN</a>
+      <a class="big board-button" href="/leaderboard">LEADERBOARD</a>
+    </nav>
   </main>
-  <footer><span>Plan small. Review honestly. Ship live.</span><a href="/api/health">Check this app</a></footer>
+  <footer><span>All paces welcome. Nobody gets left behind.</span><a href="/api/health">App status</a></footer>
 </body>
 </html>

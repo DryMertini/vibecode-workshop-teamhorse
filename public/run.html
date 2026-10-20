@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Teamhorse Run Club: see the upcoming club runs, post a run, and tap I'm in so the captain knows who to wait for.">
+  <title>Run board · Teamhorse Run Club</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header><a class="wordmark" href="/">TEAMHORSE<span> / RUN CLUB</span></a><a class="status" href="/leaderboard">Leaderboard →</a></header>
+  <main>
+    <p class="eyebrow">Upcoming runs</p>
+    <h1>Who's running, and when?</h1>
+    <p class="intro" id="club">Teamhorse Run Club is a free, all-paces running group. Anyone can post a run — most weeks there's a Tuesday and Thursday 07:00 run and a Sunday long run.</p>
+
+    <section aria-labelledby="board-title">
+      <h2 id="board-title" class="visually-hidden">Board</h2>
+      <div class="whoami">
+        <label for="my-name">Your name <span class="hint">(optional, shown next to runs you join)</span></label>
+        <input id="my-name" name="name" maxlength="40" autocomplete="nickname" placeholder="e.g. Sam">
+      </div>
+      <p id="board-message" class="message" role="status" aria-live="polite"></p>
+      <ol id="upcoming" class="runs" aria-label="Upcoming runs"></ol>
+      <div id="empty" class="empty" hidden>
+        <h3>No runs posted yet.</h3>
+        <p>Be the first: post the next run below, and others can tap <strong>I'm in</strong>.</p>
+      </div>
+      <details id="past-section" class="past" hidden>
+        <summary>Already started (<span id="past-count">0</span>)</summary>
+        <ol id="past" class="runs" aria-label="Runs that have already started"></ol>
+      </details>
+    </section>
+
+    <section class="post" aria-labelledby="post-title">
+      <h2 id="post-title">Post a run</h2>
+      <form id="run-form" novalidate>
+        <label for="route">Route <span class="req">required</span></label>
+        <input id="route" name="route" maxlength="120" required placeholder="Riverside loop">
+        <label for="meetAt">Meet at <span class="req">required</span></label>
+        <input id="meetAt" name="meetAt" maxlength="120" required placeholder="North end of the bridge">
+        <div class="pair">
+          <div>
+            <label for="pace">Pace <span class="req">required</span></label>
+            <input id="pace" name="pace" maxlength="40" required placeholder="5:30 /km">
+          </div>
+          <div>
+            <label for="distance">Distance, km <span class="hint">optional</span></label>
+            <input id="distance" name="distance" inputmode="decimal" maxlength="10" placeholder="8">
+          </div>
+        </div>
+        <label for="meetingTime">Meeting date and time <span class="req">required</span> <span class="hint">your local time</span></label>
+        <input id="meetingTime" name="meetingTime" type="datetime-local" required>
+        <p id="form-message" class="message" role="alert"></p>
+        <button class="action" type="submit">Post this run</button>
+      </form>
+    </section>
+  </main>
+  <footer><span>Meeting times are shown exactly as they were posted, in local time.</span><a href="/api/health">App status</a></footer>
+</body>
+</html>
