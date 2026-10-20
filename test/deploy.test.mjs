@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { readFileSync, rmSync } from 'node:fs';
+import { accessSync, constants, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -204,9 +204,35 @@ test('memory delegation recognises only the memory controller', () => {
   assert.equal(memoryControllerDelegated(null), false);
 });
 
+// Is there an executable `flock` in PATH? Asked here without consulting
+// scripts/deploy.mjs, so the branch below cannot be satisfied by a deploy.mjs
+// that refuses to lock everywhere.
+function flockBinaryExists() {
+  return (process.env.PATH || '').split(':').some(directory => {
+    if (!directory) return false;
+    try {
+      accessSync(join(directory, 'flock'), constants.X_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+}
+
 test('deploy lock rejects a second holder and releases when the holder dies', async () => {
   const path = join(tmpdir(), `vc-deploy-lock-${process.pid}-${Date.now()}`);
   rmSync(path, { force: true });
+  if (!flockBinaryExists()) {
+    // macOS ships no util-linux flock, so the deploy guard refuses to lock at
+    // all and says why. Assert that guard error here; the lock behaviour is
+    // asserted everywhere flock exists.
+    assert.throws(
+      () => acquireDeployLock(path),
+      /Cannot lock deploy because flock is missing\. The running service was not changed\./,
+    );
+    rmSync(path, { force: true });
+    return;
+  }
   const first = acquireDeployLock(path);
   try {
     assert.throws(() => acquireDeployLock(path), /another deploy is running/i);
