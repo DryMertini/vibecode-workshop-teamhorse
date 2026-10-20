@@ -7,6 +7,9 @@ import { fileURLToPath } from 'node:url';
 
 const assets = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
+  ['/run', ['run.html', 'text/html; charset=utf-8']],
+  ['/leaderboard', ['leaderboard.html', 'text/html; charset=utf-8']],
+  ['/leaderboard.js', ['leaderboard.js', 'text/javascript; charset=utf-8']],
   ['/style.css', ['style.css', 'text/css; charset=utf-8']],
   ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
 ]);

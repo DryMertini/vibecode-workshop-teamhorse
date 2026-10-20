@@ -66,7 +66,7 @@ async function board(origin, device = DEVICE_A, query = '') {
 test('an empty board is a valid board', async t => {
   const origin = await fixture(t);
   assert.deepEqual(await board(origin), { upcoming: [], past: [] });
-  const page = await (await fetch(origin)).text();
+  const page = await (await fetch(`${origin}/run`)).text();
   assert.match(page, /No runs posted yet/);
   const script = await fetch(`${origin}/app.js`);
   assert.equal(script.status, 200);
@@ -179,4 +179,19 @@ test('the data file and API internals are not downloadable', async t => {
   }
   assert.equal((await fetch(`${origin}/api/runs`)).status, 405);
   assert.equal((await fetch(`${origin}/api/board`, { method: 'POST' })).status, 405);
+});
+
+test('the landing page links to the run board and the leaderboard, and both pages are served', async t => {
+  const origin = await fixture(t);
+  const landing = await (await fetch(origin)).text();
+  assert.match(landing, /href="\/run"[^>]*>RUN</);
+  assert.match(landing, /href="\/leaderboard"[^>]*>LEADERBOARD</);
+  assert.match(landing, /<svg class="horse"/);
+  const leaderboard = await fetch(`${origin}/leaderboard`);
+  assert.equal(leaderboard.status, 200);
+  assert.match(await leaderboard.text(), /The track is empty/);
+  const script = await fetch(`${origin}/leaderboard.js`);
+  assert.equal(script.status, 200);
+  assert.match(script.headers.get('content-type'), /text\/javascript/);
+  assert.equal((await fetch(`${origin}/run.html`)).status, 404);
 });
