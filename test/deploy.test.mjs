@@ -6,9 +6,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  BUILD_MEMORY_MAX, acquireDeployLock, assertReleaseIsolated, checkoutRefusal, guestRefusal, locationRefusal,
-  memoryBoundedArgv, memoryControllerDelegated, previewDropIn, pruneReleaseDirectories, recoveryPlan, serviceDropIn,
+  BUILD_MEMORY_MAX, acquireDeployLock, assertReleaseIsolated, checkoutRefusal, formatObservation, guestRefusal,
+  healthFailureMessage, isOomKilled, locationRefusal, memoryBoundedArgv, memoryControllerDelegated,
+  previewDropIn, pruneReleaseDirectories, recoveryPlan, serviceDropIn, waitForRevision,
 } from '../scripts/deploy.mjs';
+import { resolveSmokeTarget } from '../scripts/smoke.mjs';
 
 const home = '/home/vc-team';
 const release = '/home/vc-team/.local/share/vibecode-workshop/releases/one';
@@ -33,6 +35,7 @@ test('drop-in points the user service at a release without a system user or priv
   assert.match(unit, /WorkingDirectory=\/home\/vc-team\/\.local\/share\/vibecode-workshop\/releases\/one\n/);
   assert.match(unit, /Environment=PORT=3000\n/);
   assert.ok(unit.includes(`Environment=APP_REVISION=${revision}\n`));
+  assert.ok(unit.includes(`Environment=WORKSHOP_GIT_SHA=${revision}\n`));
   assert.match(unit, /EnvironmentFile=-\/home\/vc-team\/\.config\/vibecode-workshop\/app\.env\n/);
   assert.match(unit, /ExecStart=\nExecStart=\/usr\/bin\/env npm start\n/);
   assert.doesNotMatch(unit, /^User=/m);
@@ -249,4 +252,108 @@ test('deploy lock rejects a second holder and releases when the holder dies', as
     rmSync(path, { force: true });
     rmSync(held, { force: true });
   }
+});
+
+test('health wait failure format captures observations, expected revision, shape and vc-app logs', async () => {
+  assert.equal(formatObservation(null), 'no response received');
+  assert.equal(formatObservation({ error: 'connection refused' }), 'connection refused');
+  assert.equal(formatObservation({ error: 'timeout' }), 'timeout');
+
+  const html404 = formatObservation({
+    status: 404,
+    statusText: 'Not Found',
+    bodyText: '<!DOCTYPE html><html><head><title>404 Not Found</title></head><body>Cannot GET /api/health</body></html>',
+  });
+  assert.match(html404, /HTTP 404 Not Found/);
+  assert.match(html404, /body excerpt: "<!DOCTYPE html>/);
+
+  const spaHtml = formatObservation({
+    status: 200,
+    statusText: 'OK',
+    bodyText: '<!DOCTYPE html><html lang="en"><head><title>Vite App</title></head><body><div id="root"></div></body></html>',
+    json: null,
+  });
+  assert.match(spaHtml, /HTTP 200 OK/);
+  assert.match(spaHtml, /body excerpt: "<!DOCTYPE html>/);
+
+  const wrongRev = formatObservation({
+    status: 200,
+    statusText: 'OK',
+    json: { ok: true, revision: 'old-commit-sha' },
+  });
+  assert.match(wrongRev, /HTTP 200 OK/);
+  assert.match(wrongRev, /revision seen: "old-commit-sha"/);
+
+  const prerenderedUndefined = formatObservation({
+    status: 200,
+    statusText: 'OK',
+    json: { ok: true },
+  });
+  assert.match(prerenderedUndefined, /HTTP 200 OK/);
+  assert.match(prerenderedUndefined, /body: \{"ok":true\}/);
+
+  const msg = healthFailureMessage({
+    lastObservation: { error: 'connection refused' },
+    expectedRevision: 'b'.repeat(40),
+  });
+  assert.match(msg, /New app did not report the intended revision within the startup window\./);
+  assert.match(msg, /Last observed on http:\/\/127\.0\.0\.1:3000\/api\/health: connection refused/);
+  assert.match(msg, new RegExp(`Expected revision: ${'b'.repeat(40)}`));
+  assert.match(msg, new RegExp(`Expected JSON shape: \\{"ok":true,"revision":"${'b'.repeat(40)}"\\}`));
+  assert.match(msg, /Run: vc-app logs/);
+
+  // Test waitForRevision with successful mock probe
+  const successResult = await waitForRevision('c'.repeat(40), {
+    attempts: 3,
+    intervalMs: 10,
+    probe: async () => ({ ok: true, status: 200, json: { ok: true, revision: 'c'.repeat(40) } }),
+  });
+  assert.equal(successResult.ok, true);
+  assert.equal(successResult.lastObservation.json.revision, 'c'.repeat(40));
+
+  // Test waitForRevision with failing mock probe
+  const failResult = await waitForRevision('c'.repeat(40), {
+    attempts: 2,
+    intervalMs: 10,
+    probe: async () => ({ ok: false, error: 'connection refused' }),
+  });
+  assert.equal(failResult.ok, false);
+  assert.equal(failResult.lastObservation.error, 'connection refused');
+});
+
+test('memory scope OOM detection recognises scope Result oom-kill and signals', () => {
+  // B-report §7 case: process killed by OOM, systemd terminates scope with SIGTERM
+  assert.equal(isOomKilled({ status: null, signal: 'SIGTERM' }, 'oom-kill'), true);
+  // Direct SIGKILL or exit 137
+  assert.equal(isOomKilled({ status: null, signal: 'SIGKILL' }, 'success'), true);
+  assert.equal(isOomKilled({ status: 137, signal: null }, 'success'), true);
+  // Normal non-OOM failure
+  assert.equal(isOomKilled({ status: 1, signal: null }, 'success'), false);
+  assert.equal(isOomKilled({ status: 0, signal: null }, 'success'), false);
+
+  // memoryBoundedArgv unit name option
+  const withUnit = memoryBoundedArgv('npm', ['ci'], '2G', 'vc-test-unit');
+  assert.ok(withUnit.includes('--unit=vc-test-unit'));
+  assert.ok(withUnit.includes('MemoryMax=2G'));
+  assert.ok(withUnit.includes('MemorySwapMax=0'));
+});
+
+test('smoke resolves local health on workshop guest and public health on laptop', () => {
+  // Inside workshop guest
+  const guestTarget = resolveSmokeTarget('https://team-06.intra.land', true);
+  assert.equal(guestTarget.targetUrl.href, 'http://127.0.0.1:3000/api/health');
+  assert.equal(guestTarget.displayOrigin, 'http://127.0.0.1:3000');
+  assert.match(guestTarget.note, /Running on the workshop guest/);
+  assert.match(guestTarget.note, /Cloudflare challenges/);
+
+  // Inside guest with loopback URL already
+  const loopbackTarget = resolveSmokeTarget('http://127.0.0.1:3000', true);
+  assert.equal(loopbackTarget.targetUrl.href, 'http://127.0.0.1:3000/api/health');
+  assert.equal(loopbackTarget.note, null);
+
+  // On participant laptop (off-guest)
+  const laptopTarget = resolveSmokeTarget('https://team-06.intra.land', false);
+  assert.equal(laptopTarget.targetUrl.href, 'https://team-06.intra.land/api/health');
+  assert.equal(laptopTarget.displayOrigin, 'https://team-06.intra.land');
+  assert.equal(laptopTarget.note, null);
 });
