@@ -38,7 +38,7 @@ Decisions taken with the human on 2026-10-20 (the human owns goal, taste, scope 
 | Names | One **optional display name** next to **I'm in**. No account, no login. |
 | Pace | Free text, e.g. `5:30 /km`. Never parsed, only displayed. |
 | Persistence | Shared between visitors and survives a server restart (file outside the release directories) |
-| Hosting today | None. Local proof plus deploy-readiness; the live release waits for the organiser |
+| Hosting | The assigned guest (team-06) is live. The reviewed **starting page** is deployed and serving; the product journey still needs M1.2/M1.3 |
 | Demo audience | One visitor on a phone |
 | Framework | Extend the starter's zero-dependency Node server. No Next.js, no Vite, no build step |
 | Team size | One person, four agent sessions per step |
@@ -54,7 +54,7 @@ Release: only after the human accepts the journey. There is no hosting yet, so t
 | M1.1 | The team can trust a local test run and the agreed plan is on disk | — | draft |
 | M1.2 | A runner can post a run; the board shows it to every visitor and keeps it across a restart | M1.1 | draft, one PR with M1.3 |
 | M1.3 | A runner can tap "I'm in" and the count and names are honest | M1.2 | draft |
-| M1.4 | The journey runs at the assigned URL and a cold visitor completes it on a phone | hosting | blocked |
+| M1.4 | The journey runs at the assigned URL and a cold visitor completes it on a phone | M1.3 | hosting ready; journey not built |
 
 **Deliberate deviation from "one step = one branch = one PR":** M1.2 and M1.3 ship as one branch, one PR and one review. A single person cannot afford four review cycles in a workshop, and the two halves of this product are one file format. Both ID sets are named in the brief and both are checked by the reviewer. The IDs keep their meanings.
 
@@ -105,6 +105,12 @@ Evidence for both lives in `.ai/work/M1.2/` (brief, validation, review). The bri
 
 Blocked on the organiser providing the assigned SSH details and public URL. Until then the journey can be run locally at phone width, but no one may claim hosted acceptance.
 
+> **Hosting rehearsal, 2026-10-20.** The organiser's details arrived and the assigned guest was
+> diagnosed, tested and deployed: the reviewed **starting page** (`c3e2c39`) is live and serving at
+> the team's public URL, and the public HTTPS route, the drop-in switch, the local health check and
+> the guest's Linux test run are all proven. **The product is not live** — the public URL shows the
+> starter page until M1.2 and M1.3 land. Evidence: `.ai/work/M1.4/hosting-rehearsal.md`.
+
 - [ ] Every teammate has access to the same team fork and the assigned SSH connection reaches the team environment. (One person: this is the human's own access.)
 - [ ] The page is reachable at the assigned HTTPS URL and `/api/health` reports the revision we intended to deploy.
 - [ ] A cold visitor — the reviewer session S4, which did not write the code — completes the whole journey on a phone: post a run, second device joins it.
@@ -123,6 +129,7 @@ Cut from the top of this list, never the core: **the distance field** → **the 
 
 - **One person means the same human writes the brief and reads the code.** Mitigated by the session protocol above, not solved. The reviewer's value depends on running a different model family and on re-running the checks rather than trusting the summary.
 - **Four agent sessions per step** is a lot of ceremony for a workshop. S2 writes a short brief, S5 does the mechanical merge work, and the plan's M1.2/M1.3 merge is the main time saver.
-- **No hosting means no public demo yet.** The journey can be demonstrated locally; the live release waits for the organiser and a human release decision. The organiser handout is an email, not an engineering problem — chase it in parallel with M1.1.
+- **Hosting is live, the product is not.** The assigned guest serves the reviewed starting page at the team's public URL, and the whole deploy path is proven. The running-club board still needs M1.2/M1.3, and the live URL shows the starter page until then. Do not let a working deployment be mistaken for a finished journey.
+- **The fork has no pull requests and no CI.** The M1.1 branch is pushed but unmerged, GitHub Actions are disabled on the fork, and no session here can open or merge a PR (no `gh`, no API token). The Linux proof came from the guest instead. Both are human actions.
 - **The starter's own test suite is red on macOS** (`flock` is a Linux tool). M1.1 fixes it; until then, a local red run means "this laptop", not "the change is broken".
 - **Timezones are a latent bug we have chosen not to fix.** Meeting times are naive local strings. A later step must not "correct" this into a conversion.
