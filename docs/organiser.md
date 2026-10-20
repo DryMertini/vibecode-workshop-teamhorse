@@ -2,9 +2,9 @@
 
 Before directing students here, use a fresh fork and a real non-admin participant account. This starter is not evidence that workshop hosting is ready.
 
-- Verify registration, team membership and each participant's SSH-key upload.
-- Give each team its actual SSH command, verified host fingerprint and HTTPS URL through the workshop's private connection UI/channel.
-- Verify an uploaded key reaches only its authorised team; do not share organiser credentials.
+- Verify registration, team membership and provision the team SSH key and pinned host key handout.
+- Give each team its actual SSH command, verified host fingerprint and HTTPS URL through the team handout.
+- Verify provisioned team keys and authorized_keys access reach only their authorised team; do not share organiser credentials.
 - Check the guest account is `vc-team` with no sudo and no extra groups, Node 22+, npm, Git and a systemd user manager. `/etc/vc-guest-contract` must be readable by that account and contain `user-app-v1`.
 - Clone a fresh public fork to `~/src/team` through the interactive team shell and run the documented first deployment. Check dependency install/build network access. Do not clone over `~/workshop`.
 - Confirm `/etc/systemd/user/vc-app.service` is the placeholder unit (`ExecStart=%h/workshop/start`, port 3000), `/var/lib/systemd/linger/vc-team` exists, and `vc-app status` works without sudo.
